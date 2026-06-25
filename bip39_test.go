@@ -1,83 +1,9 @@
-// package bip0039_test
-
-// import (
-// 	"encoding/hex"
-// 	"fmt"
-// 	"testing"
-
-// 	bip0039 "github.com/jasakode/bip-0039"
-// )
-
-// // Struktur data untuk menampung satu test case
-// type testVector struct {
-// 	entropyHex string
-// 	mnemonic   string
-// 	passphrase string
-// 	seedHex    string
-// }
-
-// // Data diambil langsung dari official Bitcoin BIP-0039 test vectors
-// var officialVectors = []testVector{
-// 	{
-// 		entropyHex: "00000000000000000000000000000000",
-// 		mnemonic:   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-// 		passphrase: "",
-// 		seedHex:    "c55257674ed39fa340b175d3b6007ee14f15bb22dcf2e83a4d5143b4e6b908d0023c03741d8e355de575b119157b313f345db28d820d1dfd00d46d2918550afd",
-// 	},
-// 	{
-// 		entropyHex: "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
-// 		mnemonic:   "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title",
-// 		passphrase: "TREZOR",
-// 		seedHex:    "559085660f38b16e45070ffb08a6552da9be154cf4f1ebfc53d102e3b2e3160e1df59ec0ff71221b66df8734f2d3381a179268fdf2208e9cc9810f443be12678",
-// 	},
-// }
-
-// func TestVector(t *testing.T) {
-// 	mnemonic := "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-// 	entropy, err := bip0039.MnemonicToEntropy(mnemonic, bip0039.LangEnglish)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-
-// 	ne, err := hex.DecodeString("00000000000000000000000000000000")
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	mm, err := bip0039.NewMnemonic(ne, bip0039.LangEnglish)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	fmt.Println(hex.EncodeToString(entropy))
-// 	fmt.Println(mm)
-// }
-
-// func TestEntropy(t *testing.T) {
-// 	entropy, err := bip0039.NewEntropy(256)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	fmt.Println(hex.EncodeToString(entropy))
-// }
-
-// func TestMnemonic(t *testing.T) {
-// 	entropy, err := bip0039.NewEntropy(256)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	mnemonic, err := bip0039.NewMnemonic(entropy, bip0039.LangEnglish)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	fmt.Println(hex.EncodeToString(entropy))
-// 	fmt.Println(mnemonic)
-// }
-
-// // go test -v -run=TestEntropy
-
 package bip0039_test
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -90,6 +16,65 @@ import (
 )
 
 type Vector map[string][][4]string
+
+// MasterKey menyimpan komponen utama dari Hierarchical Deterministic (HD) Wallet Master Node.
+type MasterKey struct {
+	PrivateKey []byte // 32 byte
+	ChainCode  []byte // 32 byte
+}
+
+var ErrInvalidSeedLen = errors.New("seed length must be between 16 and 64 bytes")
+
+// NewMasterKey mengambil seed (dari BIP-39) dan menghasilkan Master Key berdasarkan spesifikasi BIP-32.
+// Seluruh proses derivasi dan validasi kurva secp256k1 ditangani langsung di dalam satu fungsi ini.
+func NewMasterKey(seed []byte) (*MasterKey, error) {
+	// 1. Validasi standar BIP-32: Ukuran seed harus di antara 128 hingga 512 bit (16 - 64 bytes)
+	if len(seed) < 16 || len(seed) > 64 {
+		return nil, ErrInvalidSeedLen
+	}
+
+	// 2. Siapkan HMAC-SHA512 dengan key khusus "Bitcoin seed"
+	hmacKey := []byte("Bitcoin seed")
+	mac := hmac.New(sha512.New, hmacKey)
+	mac.Write(seed)
+	i := mac.Sum(nil) // Menghasilkan 64 byte data (I)
+
+	// 3. Pecah hasil menjadi dua bagian (masing-masing 32 byte)
+	il := i[:32] // I_L (Left) -> Calon Private Key
+	ir := i[32:] // I_R (Right) -> Chain Code
+
+	// 4. VALIDASI KEAMANAN KRIPTOGRAFI (Kurva secp256k1)
+
+	// A. Validasi IsZero: Pastikan I_L tidak bernilai 0 semua
+	isZero := true
+	for _, v := range il {
+		if v != 0 {
+			isZero = false
+			break
+		}
+	}
+	if isZero {
+		return nil, errors.New("illegal master private key generated: key is zero")
+	}
+
+	// B. Validasi Curve Order: Pastikan I_L < Orde Kurva N
+	curveOrderHex := "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+	n := new(big.Int)
+	n.SetString(curveOrderHex, 16)
+
+	k := new(big.Int)
+	k.SetBytes(il)
+
+	if k.Cmp(n) >= 0 {
+		return nil, errors.New("illegal master private key generated: key is greater than or equal to curve order")
+	}
+
+	// 5. Lolos semua validasi, kembalikan objek MasterKey
+	return &MasterKey{
+		PrivateKey: il,
+		ChainCode:  ir,
+	}, nil
+}
 
 // TestNewEntropy validasi penolakan bitSize yang tidak sesuai standar BIP-39
 func TestNewEntropy(t *testing.T) {
@@ -302,7 +287,7 @@ func TestVectorBIP39(t *testing.T) {
 			}
 
 			// 3. Eksekusi fungsi bip0032 yang baru disatukan
-			masterKey, err := bip0039.NewMasterKey(seed)
+			masterKey, err := NewMasterKey(seed)
 			if err != nil {
 				t.Fatalf("failed to create master key: %v", err)
 			}

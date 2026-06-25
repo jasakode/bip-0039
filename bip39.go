@@ -86,32 +86,6 @@ var (
 // loadedWordlists bertindak sebagai cache memori global untuk menyimpan kamus kata yang sudah matang hasil parsing.
 var loadedWordlists map[Language]Wordlist
 
-func init() {
-	loadedWordlists = make(map[Language]Wordlist)
-
-	// Daftarkan semua berkas bahasa mentah untuk diproses satu kali saat inisialisasi package
-	languages := map[Language]string{
-		LangChineseSimplified:  chinese_simplified,
-		LangChineseTraditional: chinese_traditional,
-		LangCzech:              czech,
-		LangEnglish:            english,
-		LangFrench:             french,
-		LangItalian:            italian,
-		LangJapanese:           japanese,
-		LangKorean:             korean,
-		LangPortuguese:         portuguese,
-		LangSpanish:            spanish,
-	}
-
-	for lang, rawData := range languages {
-		wl, err := parse(rawData, lang)
-		if err != nil {
-			panic(err) // Menghentikan startup aplikasi jika terdapat aset internal wordlist yang cacat
-		}
-		loadedWordlists[lang] = wl
-	}
-}
-
 // parse mengubah data string mentah dari berkas teks wordlist menjadi tipe Wordlist [2048]string.
 // Fungsi ini aman digunakan lintas platform karena memanfaatkan strings.Fields untuk memotong whitespace dan CRLF Windows.
 func parse(data string, lang Language) (Wordlist, error) {
@@ -141,11 +115,46 @@ func parse(data string, lang Language) (Wordlist, error) {
 	return wl, nil
 }
 
+func initLoadedWordlists() error {
+	if loadedWordlists == nil {
+		loadedWordlists = make(map[Language]Wordlist)
+	}
+	languages := map[Language]string{
+		LangChineseSimplified:  chinese_simplified,
+		LangChineseTraditional: chinese_traditional,
+		LangCzech:              czech,
+		LangEnglish:            english,
+		LangFrench:             french,
+		LangItalian:            italian,
+		LangJapanese:           japanese,
+		LangKorean:             korean,
+		LangPortuguese:         portuguese,
+		LangSpanish:            spanish,
+	}
+	for lang, data := range languages {
+		wl, err := parse(data, lang)
+		if err != nil {
+			return err
+		}
+		loadedWordlists[lang] = wl
+	}
+	return nil
+}
+
 // getWordlist mengambil data Wordlist yang telah dimuat di memori berdasarkan tipe bahasa yang dipilih.
 // Operasi ini berjalan dengan efisiensi waktu O(1).
 func getWordlist(lang Language) (Wordlist, error) {
+	if loadedWordlists == nil {
+		if err := initLoadedWordlists(); err != nil {
+			return Wordlist{}, err
+		}
+	}
+
 	wl, found := loadedWordlists[lang]
 	if !found {
+		if err := initLoadedWordlists(); err != nil {
+			return Wordlist{}, err
+		}
 		return Wordlist{}, ErrUnsupportedLanguage
 	}
 	return wl, nil
@@ -174,7 +183,7 @@ func bitsToBytes(bits string) ([]byte, error) {
 	bytes := make([]byte, len(bits)/8)
 	for i := range bytes {
 		var b byte
-		for j := 0; j < 8; j++ {
+		for j := range 8 {
 			b <<= 1
 			if bits[i*8+j] == '1' {
 				b |= 1
