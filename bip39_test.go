@@ -326,3 +326,25 @@ func TestVectorBIP39(t *testing.T) {
 	}
 
 }
+
+func TestMnemonicEntropyRoundTrip(t *testing.T) {
+	entropy, err := bip0039.NewEntropy(256)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mnemonic, err := bip0039.NewMnemonic(entropy, bip0039.LangEnglish)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entropyFromMnemonic, err := bip0039.MnemonicToEntropy(mnemonic, bip0039.LangEnglish)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println("Entropy:", hex.EncodeToString(entropy))
+	fmt.Println("Mnemonic:", mnemonic)
+	fmt.Println("Recovered Entropy:", hex.EncodeToString(entropyFromMnemonic))
+
+}
