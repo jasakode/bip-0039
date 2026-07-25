@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/text/unicode/norm"
@@ -43,10 +44,14 @@ var portuguese string
 //go:embed wordlists/spanish.txt
 var spanish string
 
-// Language merepresentasikan tipe data kustom untuk mengidentifikasi bahasa pendukung BIP-39.
+// Language identifies a supported BIP-39 language used for mnemonic
+// generation, validation, and entropy conversion.
 type Language int
 
-// Wordlist adalah array statis dengan kapasitas tepat 2048 kata sesuai spesifikasi standar BIP-39.
+// Wordlist represents the complete BIP-39 wordlist for a specific language.
+// Each wordlist contains exactly 2,048 words, where each word occupies a
+// fixed index defined by the BIP-39 specification. These indices are used
+// to map between 11-bit values and mnemonic words during encoding and decoding.
 type Wordlist [2048]string
 
 // Daftar konstanta bahasa resmi yang didukung oleh spesifikasi BIP-39.
@@ -64,37 +69,58 @@ const (
 )
 
 var (
-	// ErrEntropyTooShort dipicu jika ukuran bit kurang dari 128 bit.
+	// ErrEntropyTooShort indicates that the requested entropy size is less than
+	// the minimum allowed size of 128 bits.
 	ErrEntropyTooShort = errors.New("entropy bit size is too short: minimum is 128 bits")
 
-	// ErrEntropyTooLong dipicu jika ukuran bit melebihi 256 bit.
+	// ErrEntropyTooLong indicates that the requested entropy size exceeds the
+	// maximum allowed size of 256 bits.
 	ErrEntropyTooLong = errors.New("entropy bit size is too long: maximum is 256 bits")
 
-	// ErrEntropyNotMultipleOf32 dipicu jika ukuran bit bukan kelipatan 32.
+	// ErrEntropyNotMultipleOf32 indicates that the entropy size is not a
+	// multiple of 32 bits, as required by the BIP-39 specification.
 	ErrEntropyNotMultipleOf32 = errors.New("entropy bit size must be a multiple of 32")
 
-	// ErrInvalidWordlistCount dipicu ketika file aset teks wordlist tidak memiliki tepat 2048 kata.
+	// ErrInvalidWordlistCount indicates that a loaded BIP-39 wordlist does not
+	// contain exactly 2,048 words.
 	ErrInvalidWordlistCount = errors.New("invalid wordlist: total processed words must be exactly 2048")
 
-	// ErrUnsupportedLanguage dipicu jika tipe bahasa yang diminta tidak terdaftar atau tidak didukung.
+	// ErrUnsupportedLanguage indicates that the specified language is not
+	// supported by this package.
 	ErrUnsupportedLanguage = errors.New("unsupported language")
 
-	// ErrBitStringLength dipicu ketika panjang teks biner yang akan dikonversi bukan merupakan kelipatan 8.
+	// ErrBitStringLength indicates that a bit string cannot be converted to
+	// bytes because its length is not a multiple of 8 bits.
 	ErrBitStringLength = errors.New("bit string length must be a multiple of 8")
 )
 
-// loadedWordlists bertindak sebagai cache memori global untuk menyimpan kamus kata yang sudah matang hasil parsing.
-var loadedWordlists map[Language]Wordlist
+var (
+	// loadedWordlists caches parsed and validated BIP-39 wordlists, indexed by language.
+	loadedWordlists map[Language]Wordlist
 
-// parse mengubah data string mentah dari berkas teks wordlist menjadi tipe Wordlist [2048]string.
-// Fungsi ini aman digunakan lintas platform karena memanfaatkan strings.Fields untuk memotong whitespace dan CRLF Windows.
+	// loadedWordlistsOnce ensures the wordlist cache is initialized only once.
+	loadedWordlistsOnce sync.Once
+
+	// loadedWordlistsInitErr stores the result of the wordlist cache
+	// initialization. It is returned on every call to initLoadedWordlists,
+	// ensuring consistent error reporting after sync.Once has executed.
+	loadedWordlistsInitErr error
+)
+
+// parse converts the raw contents of an embedded BIP-39 wordlist into a
+// Wordlist. It normalizes whitespace using strings.Fields, making it
+// platform-independent and compatible with Unix (LF) and Windows (CRLF)
+// line endings.
+//
+// The returned wordlist is validated to ensure it contains exactly 2,048
+// words, as required by the BIP-39 specification.
 func parse(data string, lang Language) (Wordlist, error) {
 	var wl Wordlist
 	words := strings.Fields(data)
 
 	index := 0
 	for _, word := range words {
-		if index >= 2048 {
+		if index >= len(wl) {
 			break
 		}
 
@@ -107,107 +133,163 @@ func parse(data string, lang Language) (Wordlist, error) {
 		index++
 	}
 
-	// Validasi kepatuhan total kata standar BIP-39
-	if index != 2048 {
-		return wl, fmt.Errorf("%w (language: %d, loaded: %d/2048)", ErrInvalidWordlistCount, lang, index)
+	if index != len(wl) {
+		return wl, fmt.Errorf(
+			"%w (language: %d, loaded: %d/%d)",
+			ErrInvalidWordlistCount,
+			lang,
+			index,
+			len(wl),
+		)
 	}
 
 	return wl, nil
 }
 
+// initLoadedWordlists initializes the in-memory cache of embedded BIP-39
+// wordlists. Each wordlist is parsed and validated before being stored.
+//
+// The cache is initialized only once and reused for all subsequent lookups.
+// An error is returned if any embedded wordlist fails validation.
 func initLoadedWordlists() error {
-	if loadedWordlists == nil {
+	loadedWordlistsOnce.Do(func() {
 		loadedWordlists = make(map[Language]Wordlist)
-	}
-	languages := map[Language]string{
-		LangChineseSimplified:  chinese_simplified,
-		LangChineseTraditional: chinese_traditional,
-		LangCzech:              czech,
-		LangEnglish:            english,
-		LangFrench:             french,
-		LangItalian:            italian,
-		LangJapanese:           japanese,
-		LangKorean:             korean,
-		LangPortuguese:         portuguese,
-		LangSpanish:            spanish,
-	}
-	for lang, data := range languages {
-		wl, err := parse(data, lang)
-		if err != nil {
-			return err
+
+		languages := map[Language]string{
+			LangChineseSimplified:  chinese_simplified,
+			LangChineseTraditional: chinese_traditional,
+			LangCzech:              czech,
+			LangEnglish:            english,
+			LangFrench:             french,
+			LangItalian:            italian,
+			LangJapanese:           japanese,
+			LangKorean:             korean,
+			LangPortuguese:         portuguese,
+			LangSpanish:            spanish,
 		}
-		loadedWordlists[lang] = wl
-	}
-	return nil
+		for lang, data := range languages {
+			wl, err := parse(data, lang)
+			if err != nil {
+				loadedWordlistsInitErr = err
+				return
+			}
+			loadedWordlists[lang] = wl
+		}
+	})
+
+	return loadedWordlistsInitErr
 }
 
-// getWordlist mengambil data Wordlist yang telah dimuat di memori berdasarkan tipe bahasa yang dipilih.
-// Operasi ini berjalan dengan efisiensi waktu O(1).
+// getWordlist returns the parsed BIP-39 wordlist for the specified language.
+// The wordlist cache is initialized on first use. If the language is not
+// supported, ErrUnsupportedLanguage is returned.
+//
+// Lookup is performed in constant time, O(1).
 func getWordlist(lang Language) (Wordlist, error) {
-	if loadedWordlists == nil {
-		if err := initLoadedWordlists(); err != nil {
-			return Wordlist{}, err
-		}
+	if err := initLoadedWordlists(); err != nil {
+		return Wordlist{}, err
 	}
 
 	wl, found := loadedWordlists[lang]
 	if !found {
-		if err := initLoadedWordlists(); err != nil {
-			return Wordlist{}, err
-		}
 		return Wordlist{}, ErrUnsupportedLanguage
 	}
+
 	return wl, nil
 }
 
-// bytesToBits mengonversi slice byte menjadi representasi string biner yang berisi karakter '0' dan '1'.
+// bytesToBits converts a byte slice into its binary string representation.
+// Each byte is encoded as an 8-bit binary value, producing a string
+// consisting only of the characters '0' and '1'.
 func bytesToBits(bytes []byte) string {
 	var sb strings.Builder
+	sb.Grow(len(bytes) * 8)
+
 	for _, b := range bytes {
-		fmt.Fprintf(&sb, "%08b", b)
+		for i := 7; i >= 0; i-- {
+			if b&(1<<i) != 0 {
+				sb.WriteByte('1')
+			} else {
+				sb.WriteByte('0')
+			}
+		}
 	}
+
 	return sb.String()
 }
 
-// decimalToBits mengonversi nilai desimal integer (indeks kata) menjadi string biner sepanjang tepat 11-bit
+// decimalToBits converts an integer into its 11-bit binary string
+// representation. The output is left-padded with zeros to always produce
+// exactly 11 bits, as required by the BIP-39 specification.
 func decimalToBits(num int) string {
-	return fmt.Sprintf("%011b", num)
+	var bits [11]byte
+	for i := 10; i >= 0; i-- {
+		if num&(1<<uint(10-i)) != 0 {
+			bits[i] = '1'
+		} else {
+			bits[i] = '0'
+		}
+	}
+	return string(bits[:])
 }
 
-// bitsToBytes mengonversi deretan string biner (kelipatan 8 bit) kembali menjadi bentuk kepingan slice byte asli.
+// bitsToBytes converts a binary string into its corresponding byte slice.
+// The input must consist only of '0' and '1' characters, and its length
+// must be a multiple of 8 bits.
 func bitsToBytes(bits string) ([]byte, error) {
 	if len(bits)%8 != 0 {
 		return nil, ErrBitStringLength
 	}
 
 	bytes := make([]byte, len(bits)/8)
+
 	for i := range bytes {
 		var b byte
-		for j := range 8 {
+
+		for j := 0; j < 8; j++ {
 			b <<= 1
-			if bits[i*8+j] == '1' {
+
+			switch bits[i*8+j] {
+			case '1':
 				b |= 1
+			case '0':
+				// Do nothing.
+			default:
+				return nil, fmt.Errorf("invalid bit character %q at index %d", bits[i*8+j], i*8+j)
 			}
 		}
+
 		bytes[i] = b
 	}
+
 	return bytes, nil
 }
 
-// bitsToDecimal mengonversi potongan string biner 11-karakter menjadi nilai indeks desimal integer (0 hingga 2047).
-func bitsToDecimal(bits string) int {
+// bitsToDecimal converts an 11-bit binary string into its corresponding
+// integer value. In BIP-39, the returned value represents a word index
+// in the range 0 to 2,047.
+func bitsToDecimal(bits string) (int, error) {
 	var result int
+
 	for i := 0; i < len(bits); i++ {
 		result <<= 1
-		if bits[i] == '1' {
+
+		switch bits[i] {
+		case '1':
 			result |= 1
+		case '0':
+			// Do nothing.
+		default:
+			return 0, fmt.Errorf("invalid bit character %q at index %d", bits[i], i)
 		}
 	}
-	return result
+
+	return result, nil
 }
 
-// validateBitSize memeriksa apakah ukuran bit entropi yang dimasukkan memenuhi standar spesifikasi BIP-39.
-// Ukuran yang valid wajib berada di rentang 128 hingga 256 bit serta merupakan kelipatan dari 32.
+// validateBitSize verifies that an entropy size complies with the BIP-39
+// specification. A valid entropy size must be between 128 and 256 bits,
+// inclusive, and be a multiple of 32 bits.
 func validateBitSize(bitSize int) error {
 	if bitSize < 128 {
 		return ErrEntropyTooShort
@@ -221,8 +303,9 @@ func validateBitSize(bitSize int) error {
 	return nil
 }
 
-// NewEntropy menghasilkan slice byte berisi data acak (entropi) yang aman secara kriptografi (CSPRNG)
-// berdasarkan ukuran bitSize yang diminta. Parameter bitSize yang valid meliputi 128, 160, 192, 224, atau 256.
+// NewEntropy generates a cryptographically secure random entropy of the
+// specified size using crypto/rand. Valid entropy sizes are 128, 160, 192,
+// 224, and 256 bits, as defined by the BIP-39 specification.
 func NewEntropy(bitSize int) ([]byte, error) {
 	if err := validateBitSize(bitSize); err != nil {
 		return nil, err
@@ -243,59 +326,69 @@ func NewEntropy(bitSize int) ([]byte, error) {
 	return entropy, nil
 }
 
-// NewMnemonic mengubah potongan data entropi acak menjadi jajaran frasa kata mnemonic standar BIP-39
-// sesuai dengan bahasa yang ditentukan di parameter lang.
+// NewMnemonic converts entropy into a BIP-39 mnemonic phrase using the
+// specified language. The entropy must be 128, 160, 192, 224, or 256 bits,
+// as defined by the BIP-39 specification.
+//
+// The lang parameter selects one of the supported official BIP-39 wordlists,
+// such as English, Japanese, Korean, Spanish, French, Italian, Czech,
+// Portuguese, Chinese (Simplified), or Chinese (Traditional).
 func NewMnemonic(entropy []byte, lang Language) (string, error) {
+	const wordBitSize = 11
+
 	entropyBitLen := len(entropy) * 8
-	if entropyBitLen < 128 || entropyBitLen > 256 || entropyBitLen%32 != 0 {
-		return "", fmt.Errorf("invalid entropy length: must be between 128 and 256 bits and multiple of 32")
+	if err := validateBitSize(entropyBitLen); err != nil {
+		return "", err
 	}
 
-	words, err := getWordlist(lang)
+	wordlist, err := getWordlist(lang)
 	if err != nil {
 		return "", err
 	}
 
-	// Hitung SHA-256 untuk diekstrak menjadi bit checksum tambahan
-	hash := sha256.Sum256(entropy)
+	// BIP-39 appends the first ENT/32 bits of the SHA-256 hash as the checksum.
 	checksumBitLen := entropyBitLen / 32
+	hash := sha256.Sum256(entropy)
 
-	entropyBits := bytesToBits(entropy)
-	hashBits := bytesToBits(hash[:])
+	combinedBits := bytesToBits(entropy) + bytesToBits(hash[:])[:checksumBitLen]
 
-	// Gabungkan bit biner entropi utama dengan pecahan bit checksum di bagian ekornya
-	combinedBits := entropyBits + hashBits[:checksumBitLen]
+	mnemonic := make([]string, 0, len(combinedBits)/wordBitSize)
 
-	// Memecah setiap kelompok 11-bit menjadi representasi indeks kata kamus
-	var mnemonicWords []string
-	for i := 0; i < len(combinedBits); i += 11 {
-		bitGroup := combinedBits[i : i+11]
-		index := bitsToDecimal(bitGroup)
-		mnemonicWords = append(mnemonicWords, words[index])
+	for i := 0; i < len(combinedBits); i += wordBitSize {
+		index, err := bitsToDecimal(combinedBits[i : i+wordBitSize])
+		if err != nil {
+			return "", err
+		}
+
+		mnemonic = append(mnemonic, wordlist[index])
 	}
 
-	// PENTING: Tentukan delimiter berdasarkan standar BIP-39
-	// Khusus bahasa Jepang menggunakan spasi ideografik (\u3000)
-	joinSeparator := " "
-	if lang == LangJapanese { // Sesuaikan nama konstanta/enum LangJapanese di package Anda
-		joinSeparator = "\u3000"
+	separator := " "
+	if lang == LangJapanese {
+		// Japanese mnemonics use the ideographic space (U+3000) as the word separator.
+		separator = "\u3000"
 	}
 
-	return strings.Join(mnemonicWords, joinSeparator), nil
+	return strings.Join(mnemonic, separator), nil
 }
 
-// MnemonicToEntropy melakukan dekonstruksi balik dari kalimat frasa mnemonic untuk memulihkan data entropi biner asli.
-// Fungsi ini juga melakukan validasi ketat terhadap integritas checksum untuk mendeteksi adanya salah ketik (typo) pada kata.
+// MnemonicToEntropy converts a BIP-39 mnemonic phrase back into its original
+// entropy using the specified language. The mnemonic checksum is verified
+// according to the BIP-39 specification before the entropy is returned.
+//
+// The lang parameter specifies which official BIP-39 wordlist to use.
 func MnemonicToEntropy(mnemonic string, lang Language) ([]byte, error) {
-	words, err := getWordlist(lang)
+	const wordBitSize = 11
+
+	wordlist, err := getWordlist(lang)
 	if err != nil {
 		return nil, err
 	}
 
-	// Membangun peta indeks terbalik (inverted index map) untuk mempercepat pencarian kata menjadi O(1)
-	wordMap := make(map[string]int, len(words))
-	for idx, word := range words {
-		wordMap[word] = idx
+	// Build a reverse lookup table for constant-time word index lookups.
+	wordMap := make(map[string]int, len(wordlist))
+	for index, word := range wordlist {
+		wordMap[word] = index
 	}
 
 	mnemonicWords := strings.Fields(strings.TrimSpace(mnemonic))
@@ -306,52 +399,52 @@ func MnemonicToEntropy(mnemonic string, lang Language) ([]byte, error) {
 	}
 
 	var combinedBits strings.Builder
+	combinedBits.Grow(wordCount * wordBitSize)
+
 	for _, word := range mnemonicWords {
-		idx, found := wordMap[word]
+		index, found := wordMap[word]
 		if !found {
-			return nil, fmt.Errorf("word '%s' is not in the wordlist for this language", word)
+			return nil, fmt.Errorf("word %q is not in the selected wordlist", word)
 		}
-		combinedBits.WriteString(decimalToBits(idx))
+
+		combinedBits.WriteString(decimalToBits(index))
 	}
-	allBits := combinedBits.String()
 
-	totalBits := len(allBits)
-	checksumBitLen := totalBits / 33
-	entropyBitLen := totalBits - checksumBitLen
+	bits := combinedBits.String()
 
-	entropyBits := allBits[:entropyBitLen]
-	checksumBits := allBits[entropyBitLen:]
+	totalBitLen := len(bits)
+	checksumBitLen := totalBitLen / 33
+	entropyBitLen := totalBitLen - checksumBitLen
 
-	entropy, err := bitsToBytes(entropyBits)
+	entropy, err := bitsToBytes(bits[:entropyBitLen])
 	if err != nil {
 		return nil, err
 	}
 
-	// Hitung ulang hash dari entropi yang terekstrak untuk verifikasi checksum
+	// Verify the checksum defined by the BIP-39 specification.
 	hash := sha256.Sum256(entropy)
-	hashBits := bytesToBits(hash[:])
-	expectedChecksumBits := hashBits[:checksumBitLen]
+	expectedChecksum := bytesToBits(hash[:])[:checksumBitLen]
 
-	if checksumBits != expectedChecksumBits {
-		return nil, fmt.Errorf("invalid mnemonic checksum: verification failed")
+	if bits[entropyBitLen:] != expectedChecksum {
+		return nil, fmt.Errorf("invalid mnemonic checksum")
 	}
 
 	return entropy, nil
 }
 
-// MnemonicToSeed memproses string mnemonic beserta passphrase tambahan menggunakan algoritma PBKDF2 (SHA-512, 2048 iterasi)
-// untuk memproduksi nilai kunci 512-bit (64-byte) Seed Key. Fungsi ini menormalisasi string ke bentuk UTF-8 NFKD sesuai aturan regulasi BIP-39.
+// MnemonicToSeed processes a mnemonic string along with an optional passphrase using the PBKDF2 algorithm (SHA-512, 2048 iterations)
+// to generate a 512-bit (64-byte) Seed Key. This function normalizes the input strings into UTF-8 NFKD format according to the BIP-39 specification.
 func MnemonicToSeed(mnemonic string, passphrase string) []byte {
-	// Bersihkan variasi spasi berlebih antar sistem operasi termasuk spasi ideografik Jepang (\u3000)
+	// Normalize excessive whitespace variations across operating systems, including the Japanese ideographic space (\u3000)
 	normalized := strings.ReplaceAll(mnemonic, "\u3000", " ")
 	words := strings.Fields(normalized)
 	cleanedMnemonic := strings.Join(words, " ")
 
-	// Wajib dilakukan normalisasi Unicode NFKD agar representasi biner teks beraksen/non-ASCII bersifat identik secara global
+	// Unicode NFKD normalization is required to ensure identical binary representation for accented and non-ASCII text globally
 	nfkdMnemonic := norm.NFKD.String(cleanedMnemonic)
 	nfkdSalt := norm.NFKD.String("mnemonic" + passphrase)
 
-	// Eksekusi fungsi pembentukan kunci berbasis password (PBKDF2)
+	// Execute the password-based key derivation function (PBKDF2)
 	seed := pbkdf2.Key([]byte(nfkdMnemonic), []byte(nfkdSalt), 2048, 64, sha512.New)
 
 	return seed

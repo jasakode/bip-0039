@@ -1,22 +1,126 @@
 # bip-0039
-Native Go implementation of Bitcoin's BIP-0039 specification with official test vectors validation.
 
+A native Go implementation of the Bitcoin BIP-0039 specification with full support for official wordlists, mnemonic generation, seed derivation, and validation against the official BIP-0039 test vectors.
+
+## Features
+
+- Native Go implementation (no CGO)
+- Cryptographically secure entropy generation (`crypto/rand`)
+- Generate BIP-0039 mnemonics
+- Recover entropy from a mnemonic
+- Derive a 512-bit seed using PBKDF2-HMAC-SHA512
+- Embedded official BIP-0039 wordlists
+- Unicode NFKD normalization
+- Official checksum validation
+- Official BIP-0039 test vectors
+- Zero runtime asset dependencies
+
+## Installation
+
+```bash
+go get github.com/jasakode/bip-0039
+```
+
+## Quick Start
+
+### Generate a Mnemonic
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+
+	bip0039 "github.com/jasakode/bip-0039"
+)
+
+func main() {
+	entropy, err := bip0039.NewEntropy(256)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mnemonic, err := bip0039.NewMnemonic(entropy, bip0039.LangEnglish)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(mnemonic)
+}
+```
+
+---
+
+### Recover Entropy
+
+```go
+entropy, err := bip0039.MnemonicToEntropy(
+	mnemonic,
+	bip0039.LangEnglish,
+)
+if err != nil {
+	log.Fatal(err)
+}
+```
+
+---
+
+### Generate Seed
+
+```go
+seed := bip0039.MnemonicToSeed(
+	mnemonic,
+	"my passphrase",
+)
+
+fmt.Printf("%x\n", seed)
+```
+
+---
+
+### Using Another Language
+
+```go
+mnemonic, err := bip0039.NewMnemonic(
+	entropy,
+	bip0039.LangJapanese,
+)
+```
+
+Supported languages:
+
+- English
+- Japanese
+- Korean
+- Spanish
+- Chinese (Simplified)
+- Chinese (Traditional)
+- French
+- Italian
+- Czech
+- Portuguese
 
 ## Credits & Wordlists License
 
-This library includes all official multi-language wordlists from the Bitcoin BIP-0039 specification. 
+This project embeds the official BIP-0039 wordlists published by the Bitcoin project.
 
-The wordlists are available for the following languages:
-* English, Japanese, Korean, Spanish, Chinese (Simplified & Traditional), French, Italian, Czech, Portuguese.
+Source:
 
-All wordlists are sourced directly from the [Official Bitcoin BIP-0039 Repository](https://github.com/bitcoin/bips/tree/master/bip-0039) and are released under the **CC0 (Public Domain)** license.
+https://github.com/bitcoin/bips/tree/master/bip-0039
 
+The original wordlists are licensed under **CC0 1.0 Universal (Public Domain)**.
 
-### Multi-language Support & Special Considerations
-This library strictly follows the official language rules outlined in the BIP-0039 specification (such as Japanese ideographic space normalization and Spanish 4-character uniqueness).
-See [WORDLISTS_SPEC.md](https://github.com/bitcoin/bips/blob/master/bip-0039/bip-0039-wordlists.md) for detailed architectural constraints.
+## Running Tests
 
-
-
-
+```bash
 go test -v ./...
+```
+
+The test suite validates the implementation against the official BIP-0039 reference vectors.
+
+## License
+
+MIT License
+
+Copyright (c) 2026 PT Anak Karya Kita
