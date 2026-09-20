@@ -15,7 +15,7 @@ func generateMnemonic(this js.Value, args []js.Value) any {
 		return js.ValueOf(err.Error())
 	}
 
-	mnemonic, err := bip0039.NewMnemonic(entropy, bip0039.LangKorean)
+	mnemonic, err := bip0039.NewMnemonic(entropy, bip0039.LangEnglish)
 	if err != nil {
 		return js.ValueOf(err.Error())
 	}
