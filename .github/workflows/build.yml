@@ -36,7 +36,7 @@ jobs:
           go build \
             -buildmode=c-shared \
             -o docs/assets/darwin/${GOARCH}/libbip0039.dylib \
-            ./...
+            ./share
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -73,7 +73,7 @@ jobs:
           go build \
             -buildmode=c-shared \
             -o docs/assets/linux/${GOARCH}/libbip0039.so \
-            ./...
+            ./share
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -111,7 +111,7 @@ jobs:
           go build \
             -buildmode=c-shared \
             -o docs/assets/windows/${GOARCH}/bip0039.dll \
-            ./...
+            ./share
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
