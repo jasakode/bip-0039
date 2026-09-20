@@ -113,6 +113,7 @@ jobs:
 
     - name: Setup MSYS2 ARM64
       if: matrix.arch == 'arm64'
+      id: msys2
       uses: msys2/setup-msys2@v2
       with:
         msystem: CLANGARM64
@@ -142,31 +143,35 @@ jobs:
         GOOS: windows
         GOARCH: arm64
         CGO_ENABLED: "1"
-        CC: /clangarm64/bin/clang
-        CXX: /clangarm64/bin/clang++
+        MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
       run: |
         echo "========== TOOLCHAIN =========="
 
-        echo "CC=$CC"
-        echo "CXX=$CXX"
+        echo "MSYS2_LOCATION=$MSYS2_LOCATION"
 
         echo ""
         echo "Clang:"
-        "$CC" --version
+        "$MSYS2_LOCATION/clangarm64/bin/clang.exe" --version
 
         echo ""
         echo "Target:"
-        "$CC" -print-target-triple
+        "$MSYS2_LOCATION/clangarm64/bin/clang.exe" -print-target-triple
 
         echo ""
         echo "Go:"
         go version
+
+        echo ""
+        echo "Go env:"
         go env GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CC CXX
 
         echo ""
         echo "========== BUILD =========="
 
         mkdir -p docs/assets/windows/arm64
+
+        export CC="$MSYS2_LOCATION/clangarm64/bin/clang.exe"
+        export CXX="$MSYS2_LOCATION/clangarm64/bin/clang++.exe"
 
         go build \
           -buildmode=c-shared \
