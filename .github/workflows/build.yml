@@ -8,14 +8,16 @@ on:
 
 jobs:
   darwin:
-    name: Darwin
-    runs-on: macos-latest
+    name: Darwin ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       matrix:
-        arch:
-          - amd64
-          - arm64
+        include:
+          - arch: amd64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
 
     steps:
       - name: Checkout
@@ -30,6 +32,7 @@ jobs:
         env:
           GOOS: darwin
           GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "1"
         run: |
           mkdir -p docs/assets/darwin/${GOARCH}
 
@@ -44,15 +47,18 @@ jobs:
           name: darwin-${{ matrix.arch }}
           path: docs/assets/darwin/${{ matrix.arch }}/
 
+
   linux:
-    name: Linux
-    runs-on: ubuntu-latest
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       matrix:
-        arch:
-          - amd64
-          - arm64
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
@@ -67,6 +73,7 @@ jobs:
         env:
           GOOS: linux
           GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "1"
         run: |
           mkdir -p docs/assets/linux/${GOARCH}
 
@@ -81,15 +88,18 @@ jobs:
           name: linux-${{ matrix.arch }}
           path: docs/assets/linux/${{ matrix.arch }}/
 
+
   windows:
-    name: Windows
-    runs-on: windows-latest
+    name: Windows ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       matrix:
-        arch:
-          - amd64
-          - arm64
+        include:
+          - arch: amd64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
 
     steps:
       - name: Checkout
@@ -105,6 +115,7 @@ jobs:
         env:
           GOOS: windows
           GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "1"
         run: |
           mkdir -p docs/assets/windows/${GOARCH}
 
