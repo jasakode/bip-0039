@@ -137,26 +137,26 @@ jobs:
 
     - name: Build Windows ARM64
       if: matrix.arch == 'arm64'
-      shell: msys2 {0}
+      shell: bash
       env:
         GOOS: windows
         GOARCH: arm64
         CGO_ENABLED: "1"
-        CC: clang
-        CXX: clang++
+        CC: /clangarm64/bin/clang
+        CXX: /clangarm64/bin/clang++
       run: |
         echo "========== TOOLCHAIN =========="
 
-        echo "MSYSTEM=$MSYSTEM"
+        echo "CC=$CC"
+        echo "CXX=$CXX"
 
         echo ""
-        echo "clang:"
-        which clang
-        clang --version
+        echo "Clang:"
+        "$CC" --version
 
         echo ""
-        echo "clang target:"
-        clang -print-target-triple
+        echo "Target:"
+        "$CC" -print-target-triple
 
         echo ""
         echo "Go:"
