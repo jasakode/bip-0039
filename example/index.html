@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BIP-0039 WASM Test</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <main>
+        <h1>BIP-0039 WASM</h1>
+
+        <button id="generate">
+            Generate Mnemonic
+        </button>
+
+        <pre id="output"></pre>
+    </main>
+
+    <script src="../dist/wasm_exec.js"></script>
+
+
+    <script>
+        const output = document.getElementById("output");
+        const button = document.getElementById("generate");
+
+        let wasmReady = false;
+
+        async function loadWasm() {
+            try {
+                output.textContent = "Loading WASM...";
+
+                if (typeof Go === "undefined") {
+                    throw new Error("Go WASM runtime is not loaded.");
+                }
+
+                const go = new Go();
+
+                const response = await fetch("../dist/bip0039.wasm");
+
+                if (!response.ok) {
+                    throw new Error(
+                        `Failed to fetch WASM: ${response.status} ${response.statusText}`
+                    );
+                }
+
+                const result = await WebAssembly.instantiateStreaming(
+                    response,
+                    go.importObject
+                );
+
+                // Start Go WASM runtime.
+                const goPromise = go.run(result.instance);
+
+                // Give Go time to register JavaScript functions.
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                if (typeof window.generateMnemonic !== "function") {
+                    throw new Error(
+                        "generateMnemonic() was not registered by WASM."
+                    );
+                }
+
+                wasmReady = true;
+
+                output.textContent = "WASM loaded successfully.";
+
+                // Catch errors from the Go runtime.
+                goPromise.catch(error => {
+                    console.error("Go WASM runtime error:", error);
+                    output.textContent =
+                        "Go WASM runtime error:\n\n" + error;
+                    wasmReady = false;
+                });
+
+            } catch (error) {
+                console.error("WASM loading error:", error);
+
+                output.textContent =
+                    "Failed to load WASM:\n\n" +
+                    (error instanceof Error
+                        ? error.message
+                        : String(error));
+            }
+        }
+
+        button.addEventListener("click", () => {
+            if (!wasmReady) {
+                output.textContent = "WASM is not ready.";
+                return;
+            }
+
+            try {
+                const mnemonic = window.generateMnemonic();
+
+                output.textContent = mnemonic;
+            } catch (error) {
+                console.error("generateMnemonic error:", error);
+
+                output.textContent =
+                    "generateMnemonic failed:\n\n" +
+                    (error instanceof Error
+                        ? error.message
+                        : String(error));
+            }
+        });
+
+        loadWasm();
+    </script>
+
+</body>
+
+</html>

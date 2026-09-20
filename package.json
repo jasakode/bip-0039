@@ -11,7 +11,7 @@
   "scripts": {
     "tsc": "tsc",
     "test": "node --test",
-    "build": "GOOS=js GOARCH=wasm go build -o dist/bip0039.wasm ./wasm && cp $(go env GOROOT)/lib/wasm/wasm_exec.js dist/"
+    "build": "GOOS=js GOARCH=wasm go build -o dist/bip0039.wasm ./src && cp $(go env GOROOT)/lib/wasm/wasm_exec.js dist/"
   },
   "directories": {
     "doc": "docs"
