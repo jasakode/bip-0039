@@ -91,12 +91,16 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.arch }}
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       matrix:
-        arch:
-          - amd64
+        include:
+          - arch: amd64
+            runner: windows-latest
+
+          - arch: arm64
+            runner: windows-11-vs2026-arm
 
     steps:
       - name: Checkout
@@ -106,6 +110,73 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+
+      - name: Check ARM64 compiler
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          echo "========================================"
+          echo "SYSTEM"
+          echo "========================================"
+
+          echo "PATH=$PATH"
+
+          echo ""
+          echo "Machine:"
+          uname -m
+
+          echo ""
+          echo "System:"
+          uname -a
+
+          echo ""
+          echo "========================================"
+          echo "GCC"
+          echo "========================================"
+
+          echo "GCC path:"
+          which gcc || true
+
+          echo ""
+          echo "GCC version:"
+          gcc --version || true
+
+          echo ""
+          echo "GCC target:"
+          gcc -dumpmachine || true
+
+          echo ""
+          echo "========================================"
+          echo "GO"
+          echo "========================================"
+
+          echo "Go version:"
+          go version
+
+          echo ""
+          echo "Go environment:"
+          go env GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CC CXX
+
+          echo ""
+          echo "========================================"
+          echo "AVAILABLE ARM64 COMPILERS"
+          echo "========================================"
+
+          echo "aarch64-w64-mingw32-gcc:"
+          which aarch64-w64-mingw32-gcc || true
+
+          echo ""
+          echo "aarch64-w64-mingw32-gcc version:"
+          aarch64-w64-mingw32-gcc --version || true
+
+          echo ""
+          echo "========================================"
+          echo "AVAILABLE GCC BINARIES"
+          echo "========================================"
+
+          find /mingw* /usr/bin /opt -type f \
+            \( -name '*aarch64*gcc*' -o -name '*arm64*gcc*' \) \
+            2>/dev/null || true
 
       - name: Build
         shell: bash
@@ -125,4 +196,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
-          path: docs/assets/windows/${{ matrix.arch }}/
+          path: docs/assets/windows/${{ matrix.arch }}/  
