@@ -20,6 +20,10 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -74,13 +78,19 @@ jobs:
         run-id: ${{ github.event.workflow_run.id }}
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Prepare Pages
+      run: |
+        mkdir -p docs/assets
+        cp -R dist/assets/. docs/assets/
+
     - name: Setup Pages
       uses: actions/configure-pages@v5
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v4
       with:
         path: ./docs
 
     - name: Deploy
+      id: deployment
       uses: actions/deploy-pages@v4
