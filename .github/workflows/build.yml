@@ -47,7 +47,6 @@ jobs:
           name: darwin-${{ matrix.arch }}
           path: docs/assets/darwin/${{ matrix.arch }}/
 
-
   linux:
     name: Linux ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -88,19 +87,21 @@ jobs:
           name: linux-${{ matrix.arch }}
           path: docs/assets/linux/${{ matrix.arch }}/
 
-
   windows:
     name: Windows ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
             runner: windows-latest
+            msystem: MINGW64
 
           - arch: arm64
             runner: windows-11-vs2026-arm
+            msystem: CLANGARM64
 
     steps:
       - name: Checkout
@@ -109,117 +110,32 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
-      
-      - name: Diagnose ARM64 C toolchain
+          go-version: "1.25"
+
+      - name: Setup MSYS2
         if: matrix.arch == 'arm64'
-        shell: bash
-        run: |
-          echo "========== MACHINE =========="
-          uname -m
-          uname -a
-
-          echo ""
-          echo "========== GCC =========="
-          which gcc || true
-          gcc --version || true
-          gcc -dumpmachine || true
-
-          echo ""
-          echo "========== GCC LOCATION =========="
-          type -a gcc || true
-
-          echo ""
-          echo "========== GO =========="
-          go version
-          go env GOOS
-          go env GOARCH
-          go env GOHOSTOS
-          go env GOHOSTARCH
-          go env CGO_ENABLED
-          go env CC
-          go env CXX
-
-          echo ""
-          echo "========== ARM64 GCC =========="
-          which aarch64-w64-mingw32-gcc || true
-          aarch64-w64-mingw32-gcc --version || true
-          aarch64-w64-mingw32-gcc -dumpmachine || true
-
-      - name: Check ARM64 compiler
-        if: matrix.arch == 'arm64'
-        shell: bash
-        run: |
-          echo "========================================"
-          echo "SYSTEM"
-          echo "========================================"
-
-          echo "PATH=$PATH"
-
-          echo ""
-          echo "Machine:"
-          uname -m
-
-          echo ""
-          echo "System:"
-          uname -a
-
-          echo ""
-          echo "========================================"
-          echo "GCC"
-          echo "========================================"
-
-          echo "GCC path:"
-          which gcc || true
-
-          echo ""
-          echo "GCC version:"
-          gcc --version || true
-
-          echo ""
-          echo "GCC target:"
-          gcc -dumpmachine || true
-
-          echo ""
-          echo "========================================"
-          echo "GO"
-          echo "========================================"
-
-          echo "Go version:"
-          go version
-
-          echo ""
-          echo "Go environment:"
-          go env GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CC CXX
-
-          echo ""
-          echo "========================================"
-          echo "AVAILABLE ARM64 COMPILERS"
-          echo "========================================"
-
-          echo "aarch64-w64-mingw32-gcc:"
-          which aarch64-w64-mingw32-gcc || true
-
-          echo ""
-          echo "aarch64-w64-mingw32-gcc version:"
-          aarch64-w64-mingw32-gcc --version || true
-
-          echo ""
-          echo "========================================"
-          echo "AVAILABLE GCC BINARIES"
-          echo "========================================"
-
-          find /mingw* /usr/bin /opt -type f \
-            \( -name '*aarch64*gcc*' -o -name '*arm64*gcc*' \) \
-            2>/dev/null || true
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: false
 
       - name: Build
-        shell: bash
+        shell: ${{ matrix.arch == 'arm64' && 'msys2 {0}' || 'bash' }}
         env:
           GOOS: windows
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "1"
         run: |
+          echo "CC=$CC"
+          echo "CXX=$CXX"
+
+          if [ "${GOARCH}" = "arm64" ]; then
+            echo "MSYSTEM=${MSYSTEM}"
+            echo "gcc=$(which gcc || true)"
+            gcc --version
+            gcc -dumpmachine
+          fi
+
           mkdir -p docs/assets/windows/${GOARCH}
 
           go build \
@@ -231,4 +147,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.arch }}
-          path: docs/assets/windows/${{ matrix.arch }}/  
+          path: docs/assets/windows/${{ matrix.arch }}/
+
+
