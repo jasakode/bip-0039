@@ -1,185 +1,96 @@
-name: Build
+name: Pages
 
 on:
-  push:
+  workflow_run:
+    workflows:
+    - Build
+    types:
+    - completed
     branches:
     - feature/dev
-  workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  darwin:
-    name: Darwin ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        include:
-        - arch: amd64
-          runner: macos-15-intel
-        - arch: arm64
-          runner: macos-15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-
-    - name: Setup Go
-      uses: actions/setup-go@v5
       with:
-        go-version: "1.24"
+        ref: ${{ github.event.workflow_run.head_sha }}
 
-    - name: Build
-      env:
-        GOOS: darwin
-        GOARCH: ${{ matrix.arch }}
-        CGO_ENABLED: "1"
+    - name: Download Darwin AMD64
+      uses: actions/download-artifact@v5
+      with:
+        name: darwin-amd64
+        path: dist/assets/darwin/amd64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download Darwin ARM64
+      uses: actions/download-artifact@v5
+      with:
+        name: darwin-arm64
+        path: dist/assets/darwin/arm64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download Linux AMD64
+      uses: actions/download-artifact@v5
+      with:
+        name: linux-amd64
+        path: dist/assets/linux/amd64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download Linux ARM64
+      uses: actions/download-artifact@v5
+      with:
+        name: linux-arm64
+        path: dist/assets/linux/arm64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download Windows AMD64
+      uses: actions/download-artifact@v5
+      with:
+        name: windows-amd64
+        path: dist/assets/windows/amd64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download Windows ARM64
+      uses: actions/download-artifact@v5
+      with:
+        name: windows-arm64
+        path: dist/assets/windows/arm64
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Prepare Pages
       run: |
-        mkdir -p docs/assets/darwin/${GOARCH}
+        mkdir -p docs/assets
+        cp -R dist/assets/. docs/assets/
 
-        go build \
-          -buildmode=c-shared \
-          -o docs/assets/darwin/${GOARCH}/libbip0039.dylib \
-          ./share
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v4
       with:
-        name: darwin-${{ matrix.arch }}
-        path: docs/assets/darwin/${{ matrix.arch }}/
+        path: ./docs
 
-  linux:
-    name: Linux ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-
-    strategy:
-      matrix:
-        include:
-        - arch: amd64
-          runner: ubuntu-24.04
-        - arch: arm64
-          runner: ubuntu-24.04-arm
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: "1.24"
-
-    - name: Build
-      env:
-        GOOS: linux
-        GOARCH: ${{ matrix.arch }}
-        CGO_ENABLED: "1"
-      run: |
-        mkdir -p docs/assets/linux/${GOARCH}
-
-        go build \
-          -buildmode=c-shared \
-          -o docs/assets/linux/${GOARCH}/libbip0039.so \
-          ./share
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: linux-${{ matrix.arch }}
-        path: docs/assets/linux/${{ matrix.arch }}/
-
-  windows:
-    name: Windows ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - arch: amd64
-          runner: windows-latest
-
-        - arch: arm64
-          runner: windows-11-vs2026-arm
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: "1.25"
-
-    - name: Setup MSYS2 ARM64
-      if: matrix.arch == 'arm64'
-      id: msys2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: CLANGARM64
-        update: true
-        install: >-
-          mingw-w64-clang-aarch64-toolchain
-
-    - name: Build Windows AMD64
-      if: matrix.arch == 'amd64'
-      shell: bash
-      env:
-        GOOS: windows
-        GOARCH: amd64
-        CGO_ENABLED: "1"
-      run: |
-        mkdir -p docs/assets/windows/amd64
-
-        go build \
-          -buildmode=c-shared \
-          -o docs/assets/windows/amd64/bip0039.dll \
-          ./share
-
-    - name: Build Windows ARM64
-      if: matrix.arch == 'arm64'
-      shell: bash
-      env:
-        GOOS: windows
-        GOARCH: arm64
-        CGO_ENABLED: "1"
-        MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
-      run: |
-        echo "========== TOOLCHAIN =========="
-
-        echo "MSYS2_LOCATION=$MSYS2_LOCATION"
-
-        echo ""
-        echo "Clang:"
-        "$MSYS2_LOCATION/clangarm64/bin/clang.exe" --version
-
-        echo ""
-        echo "Target:"
-        "$MSYS2_LOCATION/clangarm64/bin/clang.exe" -print-target-triple
-
-        echo ""
-        echo "Go:"
-        go version
-
-        echo ""
-        echo "Go env:"
-        go env GOOS GOARCH GOHOSTOS GOHOSTARCH CGO_ENABLED CC CXX
-
-        echo ""
-        echo "========== BUILD =========="
-
-        mkdir -p docs/assets/windows/arm64
-
-        export CC="$MSYS2_LOCATION/clangarm64/bin/clang.exe"
-        export CXX="$MSYS2_LOCATION/clangarm64/bin/clang++.exe"
-
-        go build \
-          -buildmode=c-shared \
-          -o docs/assets/windows/arm64/bip0039.dll \
-          ./share
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-${{ matrix.arch }}
-        path: docs/assets/windows/${{ matrix.arch }}/
+    - name: Deploy
+      id: deployment
+      uses: actions/deploy-pages@v4
