@@ -1,0 +1,41 @@
+{
+  "name": "@jasakode/bip-0039",
+  "version": "1.0.0",
+  "description": "A native Go implementation of the Bitcoin BIP-0039 specification with full support for official wordlists, mnemonic generation, seed derivation, and validation against the official BIP-0039 test vectors.",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "bip0039.wasm",
+    "wasm_exec.js"
+  ],
+  "scripts": {
+    "tsc": "tsc",
+    "test": "node --test",
+    "build": "GOOS=js GOARCH=wasm go build -o dist/bip0039.wasm ./wasm && cp $(go env GOROOT)/lib/wasm/wasm_exec.js dist/"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jasakode/bip-0039.git"
+  },
+  "keywords": [
+    "bip39",
+    "bitcoin",
+    "mnemonic",
+    "crypto",
+    "wasm",
+    "webassembly"
+  ],
+  "author": "Jasakode",
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/jasakode/bip-0039/issues"
+  },
+  "homepage": "https://github.com/jasakode/bip-0039#readme",
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,98 @@
+# ─────────────────────────────────────
+# Source code
+# ─────────────────────────────────────
+
+*.go
+**/*.go
+
+# Go
+go.mod
+go.sum
+vendor/
+**/vendor/
+
+# ─────────────────────────────────────
+# Development source
+# ─────────────────────────────────────
+
+src/
+test/
+tests/
+__tests__/
+examples/
+example/
+
+# ─────────────────────────────────────
+# Development / build tools
+# ─────────────────────────────────────
+
+node_modules/
+.vscode/
+.idea/
+.DS_Store
+
+# TypeScript source/config
+tsconfig.json
+tsconfig.*.json
+tsup.config.ts
+vite.config.ts
+webpack.config.js
+
+# ─────────────────────────────────────
+# Git / CI
+# ─────────────────────────────────────
+
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# ─────────────────────────────────────
+# Documentation / repository files
+# ─────────────────────────────────────
+
+docs/
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+LICENSE.*
+CODE_OF_CONDUCT.md
+SECURITY.md
+
+# ─────────────────────────────────────
+# Go-specific files
+# ─────────────────────────────────────
+
+*.sum
+*.test
+*.out
+coverage.out
+coverage.html
+
+# ─────────────────────────────────────
+# Temporary files
+# ─────────────────────────────────────
+
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# ─────────────────────────────────────
+# OS files
+# ─────────────────────────────────────
+
+Thumbs.db
+.DS_Store
+
+# ─────────────────────────────────────
+# Keep npm package metadata
+# ─────────────────────────────────────
+!package.json
+!package-lock.json
+
+# Keep built package
+!dist/
+!dist/**
