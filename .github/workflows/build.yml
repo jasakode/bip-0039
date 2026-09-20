@@ -91,15 +91,12 @@ jobs:
 
   windows:
     name: Windows ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-latest
 
     strategy:
       matrix:
-        include:
-          - arch: amd64
-            runner: windows-latest
-          - arch: arm64
-            runner: windows-11-vs2026-arm
+        arch:
+          - amd64
 
     steps:
       - name: Checkout
@@ -110,25 +107,18 @@ jobs:
         with:
           go-version: "1.24"
 
-      - name: Setup MSVC
-        if: matrix.arch == 'arm64'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: arm64
-
       - name: Build
-        shell: pwsh
+        shell: bash
         env:
           GOOS: windows
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "1"
         run: |
-          New-Item -ItemType Directory -Force `
-            -Path "docs/assets/windows/$env:GOARCH"
+          mkdir -p docs/assets/windows/${GOARCH}
 
-          go build `
-            -buildmode=c-shared `
-            -o "docs/assets/windows/$env:GOARCH/bip0039.dll" `
+          go build \
+            -buildmode=c-shared \
+            -o docs/assets/windows/${GOARCH}/bip0039.dll \
             ./share
 
       - name: Upload artifact
